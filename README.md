@@ -9693,5 +9693,919 @@ function toggleAllDisbursements() {
 
 The `includes/bulk-operations.php` file is now complete and fully integrated with the coaching center HR system! 🚀
 
+**File 09**
+
+<img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" class="logo" width="120"/>
+
+# \modules\accounts\dashboard.php
+
+\modules\accounts\disbursements.php
+\modules\admin\classrooms.php
+\modules\admin\schedule.php
+\modules\admin\teacher-profile.php
+\modules\admin\teachers.php
+\modules\common\reports.php
+\modules\hr\job-postings.php
+\modules\hr\onboarding.php
+\modules\teacher\dashboard.php
+
+This pages are missing
+
+You're absolutely right! Looking at the comprehensive system we've built, these key pages are indeed missing. Let me provide the complete implementation for all these missing files:
+
+# 🚀 **Missing Pages - Complete Implementation**
+
+## 💰 **1. modules/accounts/dashboard.php**
+
+```php
+<?php
+$pageTitle = 'Accounts Dashboard - ' . APP_NAME;
+require_once '../../config/config.php';
+require_once '../../includes/auth.php';
+require_once '../../components/header.php';
+require_once '../../components/sidebar.php';
+require_once '../../config/database.php';
+
+$auth = new Auth();
+$auth->requireRole('accounts');
+
+$db = new Database();
+$conn = $db->getConnection();
+
+// Get financial statistics
+$stats = [];
+
+// Total monthly salary disbursements
+$currentMonth = date('n');
+$currentYear = date('Y');
+
+$monthlyQuery = "SELECT 
+                   COUNT(*) as total_disbursements,
+                   SUM(net_salary) as total_amount,
+                   COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid_count,
+                   COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count
+                 FROM salary_disbursements 
+                 WHERE month = ? AND year = ?";
+$monthlyStmt = $conn->prepare($monthlyQuery);
+$monthlyStmt->execute([$currentMonth, $currentYear]);
+$monthlyStats = $monthlyStmt->fetch(PDO::FETCH_ASSOC);
+
+// Year-to-date statistics
+$ytdQuery = "SELECT 
+               SUM(net_salary) as ytd_amount,
+               COUNT(*) as ytd_disbursements
+             FROM salary_disbursements 
+             WHERE year = ? AND status IN ('processed', 'paid')";
+$ytdStmt = $conn->prepare($ytdQuery);
+$ytdStmt->execute([$currentYear]);
+$ytdStats = $ytdStmt->fetch(PDO::FETCH_ASSOC);
+
+// Average salary
+$avgQuery = "SELECT AVG(basic_salary) as avg_salary FROM salary_config WHERE is_active = 1";
+$avgStmt = $conn->prepare($avgQuery);
+$avgStmt->execute();
+$avgSalary = $avgStmt->fetchColumn();
+
+// Payment status breakdown
+$statusQuery = "SELECT status, COUNT(*) as count FROM salary_disbursements WHERE month = ? AND year = ? GROUP BY status";
+$statusStmt = $conn->prepare($statusQuery);
+$statusStmt->execute([$currentMonth, $currentYear]);
+$statusBreakdown = $statusStmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
+// Recent transactions
+$recentQuery = "SELECT 
+                  sd.*,
+                  CONCAT(t.first_name, ' ', t.last_name) as teacher_name,
+                  t.employee_id
+                FROM salary_disbursements sd
+                LEFT JOIN teachers t ON sd.teacher_id = t.id
+                ORDER BY sd.created_at DESC 
+                LIMIT 10";
+$recentStmt = $conn->prepare($recentQuery);
+$recentStmt->execute();
+$recentTransactions = $recentStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Monthly trend (last 6 months)
+$trendQuery = "SELECT 
+                 CONCAT(year, '-', LPAD(month, 2, '0')) as period,
+                 SUM(net_salary) as total_amount,
+                 COUNT(*) as transaction_count
+               FROM salary_disbursements 
+               WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+               GROUP BY year, month
+               ORDER BY year, month";
+$trendStmt = $conn->prepare($trendQuery);
+$trendStmt->execute();
+$monthlyTrend = $trendStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Pending approvals
+$pendingQuery = "SELECT COUNT(*) FROM salary_disbursements WHERE status = 'pending'";
+$pendingStmt = $conn->prepare($pendingQuery);
+$pendingStmt->execute();
+$pendingApprovals = $pendingStmt->fetchColumn();
+?>
+
+<div class="main-content">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Accounts Dashboard</h2>
+        <div>
+            <span class="text-muted">Financial Overview - <?php echo date('F Y'); ?></span>
+        </div>
+    </div>
+
+    <!-- Alert for pending approvals -->
+    <?php if ($pendingApprovals > 0): ?>
+        <div class="alert alert-warning">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <i class="fas fa-exclamation-triangle"></i>
+                    You have <strong><?php echo $pendingApprovals; ?></strong> salary disbursement(s) pending approval.
+                </div>
+                <a href="disbursements.php?status=pending" class="btn btn-warning btn-sm">Review Now</a>
+            </div>
+        </div>
+    <?php endif; ?>
+
+    <!-- Financial Statistics -->
+    <div class="dashboard-stats">
+        <div class="stat-card primary">
+            <div class="stat-number"><?php echo formatCurrency($monthlyStats['total_amount'] ?? 0); ?></div>
+            <div class="stat-label">Monthly Disbursements</div>
+            <div class="stat-sublabel"><?php echo $monthlyStats['total_disbursements'] ?? 0; ?> transactions</div>
+            <i class="stat-icon fas fa-money-bill-wave"></i>
+        </div>
+        
+        <div class="stat-card success">
+            <div class="stat-number"><?php echo formatCurrency($ytdStats['ytd_amount'] ?? 0); ?></div>
+            <div class="stat-label">Year-to-Date Total</div>
+            <div class="stat-sublabel"><?php echo $ytdStats['ytd_disbursements'] ?? 0; ?> payments</div>
+            <i class="stat-icon fas fa-chart-line"></i>
+        </div>
+        
+        <div class="stat-card info">
+            <div class="stat-number"><?php echo formatCurrency($avgSalary ?? 0); ?></div>
+            <div class="stat-label">Average Salary</div>
+            <div class="stat-sublabel">per teacher</div>
+            <i class="stat-icon fas fa-calculator"></i>
+        </div>
+        
+        <div class="stat-card warning">
+            <div class="stat-number"><?php echo $monthlyStats['pending_count'] ?? 0; ?></div>
+            <div class="stat-label">Pending Payments</div>
+            <div class="stat-sublabel"><?php echo $monthlyStats['paid_count'] ?? 0; ?> completed</div>
+            <i class="stat-icon fas fa-clock"></i>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+        <a href="salary-management.php" class="quick-action">
+            <div class="quick-action-icon bg-primary">
+                <i class="fas fa-cog"></i>
+            </div>
+            <div class="quick-action-content">
+                <div class="quick-action-title">Manage Salaries</div>
+                <div class="quick-action-description">Configure teacher salaries</div>
+            </div>
+        </a>
+        
+        <a href="disbursements.php?action=process" class="quick-action">
+            <div class="quick-action-icon bg-success">
+                <i class="fas fa-play"></i>
+            </div>
+            <div class="quick-action-content">
+                <div class="quick-action-title">Process Salaries</div>
+                <div class="quick-action-description">Generate monthly payments</div>
+            </div>
+        </a>
+        
+        <a href="bulk-operations.php" class="quick-action">
+            <div class="quick-action-icon bg-warning">
+                <i class="fas fa-tasks"></i>
+            </div>
+            <div class="quick-action-content">
+                <div class="quick-action-title">Bulk Operations</div>
+                <div class="quick-action-description">Mass updates and processing</div>
+            </div>
+        </a>
+        
+        <a href="../common/reports.php?type=financial" class="quick-action">
+            <div class="quick-action-icon bg-info">
+                <i class="fas fa-chart-bar"></i>
+            </div>
+            <div class="quick-action-content">
+                <div class="quick-action-title">Financial Reports</div>
+                <div class="quick-action-description">Generate reports</div>
+            </div>
+        </a>
+    </div>
+
+    <div class="row">
+        <!-- Recent Transactions -->
+        <div class="col-md-8">
+            <div class="material-card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Recent Transactions</h5>
+                        <a href="disbursements.php" class="btn btn-sm btn-outline">View All</a>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Period</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($recentTransactions as $transaction): ?>
+                                    <tr>
+                                        <td>
+                                            <div>
+                                                <div class="font-weight-bold"><?php echo htmlspecialchars($transaction['teacher_name']); ?></div>
+                                                <small class="text-muted"><?php echo htmlspecialchars($transaction['employee_id']); ?></small>
+                                            </div>
+                                        </td>
+                                        <td><?php echo date('M Y', mktime(0, 0, 0, $transaction['month'], 1, $transaction['year'])); ?></td>
+                                        <td class="font-weight-bold"><?php echo formatCurrency($transaction['net_salary']); ?></td>
+                                        <td><?php echo getStatusBadge($transaction['status']); ?></td>
+                                        <td><?php echo formatDate($transaction['created_at'], 'M j'); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts and Analytics -->
+        <div class="col-md-4">
+            <!-- Payment Status Distribution -->
+            <div class="material-card">
+                <div class="card-header">
+                    <h5 class="mb-0">Payment Status</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="statusChart" height="200"></canvas>
+                </div>
+            </div>
+
+            <!-- Monthly Trend -->
+            <div class="material-card">
+                <div class="card-header">
+                    <h5 class="mb-0">6-Month Trend</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="trendChart" height="150"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.dashboard-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.stat-card {
+    background: white;
+    padding: 24px;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    position: relative;
+    overflow: hidden;
+}
+
+.stat-card.primary { border-left: 4px solid var(--primary-color); }
+.stat-card.success { border-left: 4px solid var(--success-color); }
+.stat-card.info { border-left: 4px solid var(--info-color); }
+.stat-card.warning { border-left: 4px solid var(--warning-color); }
+
+.stat-number {
+    font-size: 28px;
+    font-weight: bold;
+    color: var(--primary-color);
+    margin-bottom: 8px;
+}
+
+.stat-label {
+    color: var(--text-color);
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.stat-sublabel {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.stat-icon {
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 48px;
+    color: rgba(0,0,0,0.1);
+}
+
+.quick-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.quick-action {
+    background: white;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    padding: 20px;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    transition: transform 0.3s ease;
+}
+
+.quick-action:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.quick-action-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 20px;
+}
+
+.quick-action-title {
+    font-weight: 500;
+    color: var(--text-color);
+}
+
+.quick-action-description {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Payment Status Chart
+const statusCtx = document.getElementById('statusChart').getContext('2d');
+new Chart(statusCtx, {
+    type: 'doughnut',
+    data: {
+        labels: <?php echo json_encode(array_keys($statusBreakdown)); ?>,
+        datasets: [{
+            data: <?php echo json_encode(array_values($statusBreakdown)); ?>,
+            backgroundColor: ['#4caf50', '#ff9800', '#f44336', '#2196f3']
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { position: 'bottom' }
+        }
+    }
+});
+
+// Monthly Trend Chart
+const trendCtx = document.getElementById('trendChart').getContext('2d');
+new Chart(trendCtx, {
+    type: 'line',
+    data: {
+        labels: <?php echo json_encode(array_column($monthlyTrend, 'period')); ?>,
+        datasets: [{
+            label: 'Total Amount',
+            data: <?php echo json_encode(array_column($monthlyTrend, 'total_amount')); ?>,
+            borderColor: '#2196f3',
+            backgroundColor: 'rgba(33, 150, 243, 0.1)',
+            tension: 0.4
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true } }
+    }
+});
+</script>
+
+<?php require_once '../../components/footer.php'; ?>
+```
+
+
+## 💰 **2. modules/accounts/disbursements.php**
+
+```php
+<?php
+$pageTitle = 'Salary Disbursements - ' . APP_NAME;
+require_once '../../config/config.php';
+require_once '../../includes/auth.php';
+require_once '../../components/header.php';
+require_once '../../components/sidebar.php';
+require_once '../../includes/security.php';
+require_once '../../includes/functions.php';
+
+$auth = new Auth();
+$auth->requireRole('accounts');
+
+$db = new Database();
+$conn = $db->getConnection();
+
+$message = '';
+$messageType = '';
+
+// Handle disbursement operations
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (Security::validateCSRFToken($_POST['csrf_token'] ?? '')) {
+        $action = $_POST['action'] ?? '';
+        
+        switch ($action) {
+            case 'update_status':
+                $disbursementId = (int)$_POST['disbursement_id'];
+                $status = $_POST['status'] ?? '';
+                $paymentMethod = $_POST['payment_method'] ?? '';
+                $paymentDate = $_POST['payment_date'] ?? null;
+                
+                if (in_array($status, ['pending', 'processed', 'paid'])) {
+                    try {
+                        $query = "UPDATE salary_disbursements SET status = ?, payment_method = ?, payment_date = ? WHERE id = ?";
+                        $stmt = $conn->prepare($query);
+                        $stmt->execute([$status, $paymentMethod, $paymentDate, $disbursementId]);
+                        
+                        $message = 'Disbursement status updated successfully!';
+                        $messageType = 'success';
+                    } catch (PDOException $e) {
+                        $message = 'Error updating disbursement status';
+                        $messageType = 'danger';
+                    }
+                }
+                break;
+                
+            case 'bulk_approve':
+                $disbursementIds = $_POST['disbursement_ids'] ?? [];
+                if (!empty($disbursementIds)) {
+                    try {
+                        $placeholders = str_repeat('?,', count($disbursementIds) - 1) . '?';
+                        $query = "UPDATE salary_disbursements SET status = 'processed' WHERE id IN ($placeholders) AND status = 'pending'";
+                        $stmt = $conn->prepare($query);
+                        $stmt->execute($disbursementIds);
+                        
+                        $approvedCount = $stmt->rowCount();
+                        $message = "Successfully approved {$approvedCount} disbursement(s)";
+                        $messageType = 'success';
+                    } catch (PDOException $e) {
+                        $message = 'Error in bulk approval';
+                        $messageType = 'danger';
+                    }
+                }
+                break;
+        }
+    }
+}
+
+// Get disbursements with filters
+$page = (int)($_GET['page'] ?? 1);
+$search = $_GET['search'] ?? '';
+$statusFilter = $_GET['status'] ?? '';
+$monthFilter = $_GET['month'] ?? '';
+$yearFilter = $_GET['year'] ?? '';
+
+$whereConditions = [];
+$params = [];
+
+if ($search) {
+    $whereConditions[] = "(CONCAT(t.first_name, ' ', t.last_name) LIKE ? OR t.employee_id LIKE ?)";
+    $params = array_merge($params, ["%$search%", "%$search%"]);
+}
+
+if ($statusFilter) {
+    $whereConditions[] = "sd.status = ?";
+    $params[] = $statusFilter;
+}
+
+if ($monthFilter) {
+    $whereConditions[] = "sd.month = ?";
+    $params[] = $monthFilter;
+}
+
+if ($yearFilter) {
+    $whereConditions[] = "sd.year = ?";
+    $params[] = $yearFilter;
+}
+
+$whereClause = empty($whereConditions) ? '' : 'WHERE ' . implode(' AND ', $whereConditions);
+
+$countQuery = "SELECT COUNT(*) FROM salary_disbursements sd LEFT JOIN teachers t ON sd.teacher_id = t.id $whereClause";
+$countStmt = $conn->prepare($countQuery);
+$countStmt->execute($params);
+$totalRecords = $countStmt->fetchColumn();
+
+$pagination = Pagination::paginate($totalRecords, $page);
+$offset = $pagination['offset'];
+
+$query = "SELECT 
+            sd.*,
+            CONCAT(t.first_name, ' ', t.last_name) as teacher_name,
+            t.employee_id,
+            u.username as processed_by_name
+          FROM salary_disbursements sd
+          LEFT JOIN teachers t ON sd.teacher_id = t.id
+          LEFT JOIN users u ON sd.processed_by = u.id
+          $whereClause
+          ORDER BY sd.year DESC, sd.month DESC, sd.created_at DESC
+          LIMIT $offset, " . RECORDS_PER_PAGE;
+
+$stmt = $conn->prepare($query);
+$stmt->execute($params);
+$disbursements = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Get summary statistics
+$summaryQuery = "SELECT 
+                   COUNT(*) as total_count,
+                   SUM(net_salary) as total_amount,
+                   COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count,
+                   COUNT(CASE WHEN status = 'processed' THEN 1 END) as processed_count,
+                   COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid_count
+                 FROM salary_disbursements sd 
+                 LEFT JOIN teachers t ON sd.teacher_id = t.id 
+                 $whereClause";
+$summaryStmt = $conn->prepare($summaryQuery);
+$summaryStmt->execute($params);
+$summary = $summaryStmt->fetch(PDO::FETCH_ASSOC);
+?>
+
+<div class="main-content">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Salary Disbursements</h2>
+        <div>
+            <button class="btn btn-warning" onclick="showModal('bulkApproveModal')">
+                <i class="fas fa-check-double"></i> Bulk Approve
+            </button>
+            <a href="../common/reports.php?type=disbursements" class="btn btn-info">
+                <i class="fas fa-download"></i> Export Report
+            </a>
+        </div>
+    </div>
+
+    <?php if ($message): ?>
+        <div class="alert alert-<?php echo $messageType; ?>"><?php echo $message; ?></div>
+    <?php endif; ?>
+
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="summary-card">
+                <div class="summary-number"><?php echo $summary['total_count']; ?></div>
+                <div class="summary-label">Total Disbursements</div>
+                <div class="summary-amount"><?php echo formatCurrency($summary['total_amount']); ?></div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="summary-card pending">
+                <div class="summary-number"><?php echo $summary['pending_count']; ?></div>
+                <div class="summary-label">Pending</div>
+                <i class="summary-icon fas fa-clock"></i>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="summary-card processing">
+                <div class="summary-number"><?php echo $summary['processed_count']; ?></div>
+                <div class="summary-label">Processed</div>
+                <i class="summary-icon fas fa-cog"></i>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="summary-card completed">
+                <div class="summary-number"><?php echo $summary['paid_count']; ?></div>
+                <div class="summary-label">Paid</div>
+                <i class="summary-icon fas fa-check-circle"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="material-card mb-4">
+        <div class="card-body">
+            <form method="GET" class="row">
+                <div class="col-md-3">
+                    <input type="text" name="search" class="form-control" placeholder="Search employees..." value="<?php echo htmlspecialchars($search); ?>">
+                </div>
+                <div class="col-md-2">
+                    <select name="status" class="form-control">
+                        <option value="">All Status</option>
+                        <option value="pending" <?php echo $statusFilter === 'pending' ? 'selected' : ''; ?>>Pending</option>
+                        <option value="processed" <?php echo $statusFilter === 'processed' ? 'selected' : ''; ?>>Processed</option>
+                        <option value="paid" <?php echo $statusFilter === 'paid' ? 'selected' : ''; ?>>Paid</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select name="month" class="form-control">
+                        <option value="">All Months</option>
+                        <?php for ($i = 1; $i <= 12; $i++): ?>
+                            <option value="<?php echo $i; ?>" <?php echo $monthFilter == $i ? 'selected' : ''; ?>>
+                                <?php echo date('F', mktime(0, 0, 0, $i, 1)); ?>
+                            </option>
+                        <?php endfor; ?>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select name="year" class="form-control">
+                        <option value="">All Years</option>
+                        <?php for ($year = date('Y'); $year >= date('Y') - 3; $year--): ?>
+                            <option value="<?php echo $year; ?>" <?php echo $yearFilter == $year ? 'selected' : ''; ?>>
+                                <?php echo $year; ?>
+                            </option>
+                        <?php endfor; ?>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">Filter</button>
+                </div>
+                <div class="col-md-1">
+                    <a href="disbursements.php" class="btn btn-secondary w-100">Clear</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Disbursements Table -->
+    <div class="material-card">
+        <div class="card-header">
+            <h5 class="mb-0">Disbursements List (<?php echo $totalRecords; ?> total)</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>
+                                <input type="checkbox" id="selectAll" onchange="toggleAllDisbursements()">
+                            </th>
+                            <th>Employee</th>
+                            <th>Period</th>
+                            <th>Basic Salary</th>
+                            <th>Allowances</th>
+                            <th>Deductions</th>
+                            <th>Net Amount</th>
+                            <th>Status</th>
+                            <th>Payment Date</th>
+                            <th class="text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($disbursements as $disbursement): ?>
+                            <tr>
+                                <td>
+                                    <input type="checkbox" name="disbursement_ids[]" value="<?php echo $disbursement['id']; ?>" class="disbursement-checkbox">
+                                </td>
+                                <td>
+                                    <div>
+                                        <div class="font-weight-bold"><?php echo htmlspecialchars($disbursement['teacher_name']); ?></div>
+                                        <small class="text-muted"><?php echo htmlspecialchars($disbursement['employee_id']); ?></small>
+                                    </div>
+                                </td>
+                                <td><?php echo date('F Y', mktime(0, 0, 0, $disbursement['month'], 1, $disbursement['year'])); ?></td>
+                                <td><?php echo formatCurrency($disbursement['basic_salary']); ?></td>
+                                <td class="text-success">
+                                    <?php if ($disbursement['allowances'] > 0): ?>
+                                        +<?php echo formatCurrency($disbursement['allowances']); ?>
+                                    <?php else: ?>
+                                        -
+                                    <?php endif; ?>
+                                </td>
+                                <td class="text-danger">
+                                    <?php if ($disbursement['deductions'] > 0): ?>
+                                        -<?php echo formatCurrency($disbursement['deductions']); ?>
+                                    <?php else: ?>
+                                        -
+                                    <?php endif; ?>
+                                </td>
+                                <td class="font-weight-bold text-primary"><?php echo formatCurrency($disbursement['net_salary']); ?></td>
+                                <td><?php echo getStatusBadge($disbursement['status']); ?></td>
+                                <td>
+                                    <?php echo $disbursement['payment_date'] ? formatDate($disbursement['payment_date'], 'M j, Y') : '-'; ?>
+                                </td>
+                                <td class="table-actions">
+                                    <button class="btn btn-sm btn-warning" onclick="updateDisbursement(<?php echo $disbursement['id']; ?>, '<?php echo $disbursement['status']; ?>', '<?php echo $disbursement['payment_method']; ?>', '<?php echo $disbursement['payment_date']; ?>')">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-info" onclick="viewDetails(<?php echo $disbursement['id']; ?>)">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <?php if ($pagination['total_pages'] > 1): ?>
+            <div class="card-footer">
+                <?php echo Pagination::generatePaginationHTML($pagination, '?search=' . urlencode($search) . '&status=' . urlencode($statusFilter) . '&month=' . urlencode($monthFilter) . '&year=' . urlencode($yearFilter)); ?>
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<!-- Update Disbursement Modal -->
+<div class="modal" id="updateDisbursementModal">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h5 class="modal-title">Update Disbursement</h5>
+            <button type="button" class="modal-close" data-dismiss="modal">&times;</button>
+        </div>
+        <form method="POST">
+            <div class="modal-body">
+                <input type="hidden" name="csrf_token" value="<?php echo Security::generateCSRFToken(); ?>">
+                <input type="hidden" name="action" value="update_status">
+                <input type="hidden" name="disbursement_id" id="modalDisbursementId">
+                
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-control" required>
+                        <option value="pending">Pending</option>
+                        <option value="processed">Processed</option>
+                        <option value="paid">Paid</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Payment Method</label>
+                    <select name="payment_method" class="form-control">
+                        <option value="">Select Method</option>
+                        <option value="bank_transfer">Bank Transfer</option>
+                        <option value="cash">Cash</option>
+                        <option value="cheque">Cheque</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Payment Date</label>
+                    <input type="date" name="payment_date" class="form-control">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Update Disbursement</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Bulk Approve Modal -->
+<div class="modal" id="bulkApproveModal">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h5 class="modal-title">Bulk Approve Disbursements</h5>
+            <button type="button" class="modal-close" data-dismiss="modal">&times;</button>
+        </div>
+        <form method="POST" id="bulkApproveForm">
+            <div class="modal-body">
+                <input type="hidden" name="csrf_token" value="<?php echo Security::generateCSRFToken(); ?>">
+                <input type="hidden" name="action" value="bulk_approve">
+                
+                <div class="alert alert-info">
+                    <strong>Note:</strong> This will approve all selected pending disbursements.
+                </div>
+                
+                <div id="selectedDisbursementsCount" class="text-muted">
+                    No disbursements selected
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-warning" id="bulkApproveBtn" disabled>Approve Selected</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.summary-card {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    position: relative;
+    margin-bottom: 20px;
+}
+
+.summary-card.pending { border-left: 4px solid var(--warning-color); }
+.summary-card.processing { border-left: 4px solid var(--info-color); }
+.summary-card.completed { border-left: 4px solid var(--success-color); }
+
+.summary-number {
+    font-size: 28px;
+    font-weight: bold;
+    color: var(--primary-color);
+    margin-bottom: 8px;
+}
+
+.summary-label {
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.summary-amount {
+    color: var(--success-color);
+    font-weight: 500;
+}
+
+.summary-icon {
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 32px;
+    color: rgba(0,0,0,0.1);
+}
+
+.table-actions .btn {
+    margin-right: 5px;
+}
+</style>
+
+<script>
+function updateDisbursement(id, status, paymentMethod, paymentDate) {
+    document.getElementById('modalDisbursementId').value = id;
+    document.querySelector('#updateDisbursementModal select[name="status"]').value = status;
+    document.querySelector('#updateDisbursementModal select[name="payment_method"]').value = paymentMethod;
+    document.querySelector('#updateDisbursementModal input[name="payment_date"]').value = paymentDate;
+    showModal('updateDisbursementModal');
+}
+
+function toggleAllDisbursements() {
+    const selectAll = document.getElementById('selectAll');
+    const checkboxes = document.querySelectorAll('.disbursement-checkbox');
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = selectAll.checked;
+    });
+    
+    updateBulkApproveButton();
+}
+
+function updateBulkApproveButton() {
+    const selectedCheckboxes = document.querySelectorAll('.disbursement-checkbox:checked');
+    const count = selectedCheckboxes.length;
+    const button = document.getElementById('bulkApproveBtn');
+    const countDiv = document.getElementById('selectedDisbursementsCount');
+    
+    if (count > 0) {
+        button.disabled = false;
+        countDiv.textContent = `${count} disbursement(s) selected`;
+        
+        // Add selected IDs to form
+        const form = document.getElementById('bulkApproveForm');
+        const existingInputs = form.querySelectorAll('input[name="disbursement_ids[]"]');
+        existingInputs.forEach(input => input.remove());
+        
+        selectedCheckboxes.forEach(checkbox => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'disbursement_ids[]';
+            input.value = checkbox.value;
+            form.appendChild(input);
+        });
+    } else {
+        button.disabled = true;
+        countDiv.textContent = 'No disbursements selected';
+    }
+}
+
+// Add event listeners
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.disbursement-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', updateBulkApproveButton);
+    });
+});
+</script>
+
+<?php require_once '../../components/footer.php'; ?>
+```
+
+Would you like me to continue with the remaining missing pages? The system is quite extensive, and I want to ensure each page is complete and properly integrated.
+
 
 
